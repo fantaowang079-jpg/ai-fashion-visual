@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>衣镜 Studio · AI 换装工作台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">衣</span>
+      <div>
+        <h1>衣镜 Studio</h1>
+        <p>AI 换装 · 试衣 · 智能穿搭</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button id="balanceButton" class="topbar-chip" type="button" hidden>余额 / 额度</button>
+      <span id="providerBadge" class="badge badge-muted">检测中…</span>
+      <span id="modelTag" class="model-tag">qwen-image</span>
+    </div>
+  </header>
+
+  <nav class="tabs-wrap" role="tablist" aria-label="功能切换">
+    <div class="tabs">
+      <button class="tab active" data-tab="restyle" role="tab" aria-selected="true">AI 换装</button>
+      <button class="tab" data-tab="tryon" role="tab" aria-selected="false">虚拟试衣</button>
+      <button class="tab" data-tab="stylist" role="tab" aria-selected="false">智能穿搭</button>
+      <button class="tab" data-tab="video" role="tab" aria-selected="false">图生视频</button>
+      <button class="tab" data-tab="history" role="tab" aria-selected="false">历史记录</button>
+    </div>
+  </nav>
+
+  <main class="layout" id="layout">
+    <section class="panel form-panel" id="formPanel">
+      <div id="restyleForm">
+      <div class="panel-head">
+        <h2>1. 上传人物图</h2>
+        <span class="hint">单人、正面、全身/半身效果最好</span>
+      </div>
+      <div id="personDrop" class="dropzone" tabindex="0" role="button" aria-label="上传人物图">
+        <input id="personInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+        <div class="drop-empty">
+          <div class="drop-icon">＋</div>
+          <p><strong>点击上传</strong> 或拖拽图片到这里</p>
+          <span>JPG / PNG / WEBP，≤10MB</span>
+        </div>
+        <div class="drop-preview" hidden>
+          <img id="personPreview" alt="人物图预览">
+          <button id="personRemove" class="remove-btn" type="button" title="移除图片">×</button>
+        </div>
+      </div>
+      <button id="restyleModelPick" class="chip model-pick" type="button">从内置模特库选择</button>
+
+      <div class="panel-head">
+        <h2>2. 换装指令</h2>
+        <span class="hint">描述要换成的服装</span>
+      </div>
+      <div class="chips" id="instructionChips">
+        <button type="button" class="chip">把上装换成米白针织开衫</button>
+        <button type="button" class="chip">把上装换成黑色西装外套</button>
+        <button type="button" class="chip">把上装换成白色衬衫</button>
+        <button type="button" class="chip">加一件同色系外套</button>
+      </div>
+      <textarea id="instruction" rows="3" placeholder="例如：把上装换成米白色宽松针织开衫，下装和鞋子保持不变"></textarea>
+
+      <details class="optional">
+        <summary>可选：按目标服装图换衣</summary>
+        <div id="garmentDrop" class="dropzone dropzone-sm" tabindex="0" role="button" aria-label="上传目标服装图">
+          <input id="garmentInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="drop-empty">
+            <p>上传目标服装图（白底平铺最佳）</p>
+          </div>
+          <div class="drop-preview" hidden>
+            <img id="garmentPreview" alt="服装图预览">
+            <button id="garmentRemove" class="remove-btn" type="button" title="移除图片">×</button>
+          </div>
+        </div>
+      </details>
+
+      <div class="row">
+        <label>部位
+          <select id="part">
+            <option value="top">上装</option>
+            <option value="bottom">下装</option>
+            <option value="one_piece">连衣裙 / 连体装</option>
+            <option value="full">整套</option>
+          </select>
+        </label>
+        <label>数量
+          <select id="count">
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+          </select>
+        </label>
+        <label>尺寸（可选）
+          <input id="size" placeholder="如 1024*1365">
+        </label>
+      </div>
+
+      <label class="field">
+        模型路由
+        <select id="model">
+          <option value="">自动（主模型 + 失败降级）</option>
+        </select>
+      </label>
+
+      <label class="checkbox">
+        <input id="dryRun" type="checkbox">
+        仅预览 Prompt（不调用 API，免费）
+      </label>
+
+      <button id="generate" class="primary" type="button" disabled>开始换装</button>
+      <p class="cost-note">
+        真实生成调用百炼 <span id="costModel">qwen-image-3.0</span>，按张计费，约 30–60 秒/张；
+        <span id="costEstimate">预计 ¥0.50</span>（估算，以控制台账单为准）。
+      </p>
+      <div id="ledger" class="ledger" hidden>
+        <span>累计成本</span>
+        <strong id="ledgerTotal">¥0.00</strong>
+        <span id="ledgerMeta">0 张</span>
+      </div>
+      <p id="formError" class="error" hidden></p>
+      </div>
+
+      <div id="tryonForm" hidden>
+        <div class="panel-head">
+          <h2>1. 上传人物图</h2>
+          <span class="hint">单人、正面、全身效果最好</span>
+        </div>
+        <div id="tryonPersonDrop" class="dropzone" tabindex="0" role="button" aria-label="上传试衣人物图">
+          <input id="tryonPersonInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="drop-empty">
+            <div class="drop-icon">＋</div>
+            <p><strong>点击上传</strong> 或拖拽图片到这里</p>
+            <span>JPG / PNG / WEBP，≤10MB</span>
+          </div>
+          <div class="drop-preview" hidden>
+            <img id="tryonPersonPreview" alt="试衣人物图预览">
+            <button id="tryonPersonRemove" class="remove-btn" type="button" title="移除图片">×</button>
+          </div>
+        </div>
+        <button id="tryonModelPick" class="chip model-pick" type="button">从内置模特库选择</button>
+
+        <div class="panel-head">
+          <h2>2. 上传服装图</h2>
+          <span class="hint">白底平铺/挂拍，正面</span>
+        </div>
+        <div id="tryonGarmentDrop" class="dropzone dropzone-sm" tabindex="0" role="button" aria-label="上传试衣服装图">
+          <input id="tryonGarmentInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="drop-empty">
+            <p>上传上装 / 下装 / 连衣裙平铺图</p>
+          </div>
+          <div class="drop-preview" hidden>
+            <img id="tryonGarmentPreview" alt="试衣服装图预览">
+            <button id="tryonGarmentRemove" class="remove-btn" type="button" title="移除图片">×</button>
+          </div>
+        </div>
+
+        <details class="optional">
+          <summary>可选：下装图（部位=整套时必填）</summary>
+          <div id="tryonBottomDrop" class="dropzone dropzone-sm" tabindex="0" role="button" aria-label="上传下装图">
+            <input id="tryonBottomInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+            <div class="drop-empty">
+              <p>上传下装图（裤子 / 半裙）</p>
+            </div>
+            <div class="drop-preview" hidden>
+              <img id="tryonBottomPreview" alt="下装图预览">
+              <button id="tryonBottomRemove" class="remove-btn" type="button" title="移除图片">×</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="row">
+          <label>部位
+            <select id="tryonPart">
+              <option value="top">上装</option>
+              <option value="bottom">下装</option>
+              <option value="one_piece">连衣裙 / 连体装</option>
+              <option value="full">整套</option>
+            </select>
+          </label>
+          <label>数量
+            <select id="tryonCount">
+              <option>1</option>
+              <option>2</option>
+              <option>3</option>
+              <option>4</option>
+            </select>
+          </label>
+          <label>尺寸
+            <input id="tryonSize" value="2K" placeholder="2K / 1024x1024">
+          </label>
+        </div>
+
+        <label class="field">
+          服装描述（可选）
+          <input id="tryonDesc" placeholder="如：白色棉质衬衫 / 黑色百褶裙，帮助模型理解款式">
+        </label>
+
+        <label class="field">
+          生成方式
+          <select id="tryonMethod">
+            <option value="auto">自动（推荐）</option>
+            <option value="qwen">百炼图像编辑（qwen-image）</option>
+            <option value="seedream">Seedream 多参考图</option>
+          </select>
+        </label>
+
+        <label class="checkbox">
+          <input id="tryonDryRun" type="checkbox">
+          仅预览 Prompt（不调用 API，免费）
+        </label>
+
+        <button id="tryonGenerate" class="primary" type="button" disabled>开始试衣</button>
+        <p class="cost-note">
+          试衣模型 <span id="tryonModelLabel">qwen-image-3.0</span>；
+          <span id="tryonEstimate">预计 ¥0.50</span>（估算，以控制台账单为准）。
+        </p>
+        <p id="tryonError" class="error" hidden></p>
+      </div>
+
+      <div id="stylistForm" hidden>
+        <div class="panel-head">
+          <h2>智能穿搭</h2>
+          <span class="hint">从内置衣橱选品，生成 3 套方案</span>
+        </div>
+        <div class="row">
+          <label>场合
+            <select id="styleOccasion">
+              <option>通勤</option>
+              <option>约会</option>
+              <option>旅行</option>
+              <option>运动</option>
+              <option>正式</option>
+            </select>
+          </label>
+          <label>季节
+            <select id="styleSeason">
+              <option>四季</option>
+              <option>春夏</option>
+              <option>秋冬</option>
+              <option>春秋</option>
+            </select>
+          </label>
+          <label>色系
+            <select id="stylePalette">
+              <option>中性</option>
+              <option>黑白</option>
+              <option>暖色</option>
+              <option>冷色</option>
+              <option>莫兰迪</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          起点单品（可选）
+          <input id="styleAnchor" placeholder="如：米色针织开衫，想围绕它搭配">
+        </label>
+        <button id="styleGenerate" class="primary" type="button">生成 3 套搭配</button>
+        <p class="cost-note">
+          由 <span id="styleModelLabel">qwen-plus</span> 从内置衣橱选品；
+          文本调用费用不计入图片台账。
+        </p>
+        <p id="styleFormError" class="error" hidden></p>
+      </div>
+
+      <div id="videoForm" hidden>
+        <div class="panel-head">
+          <h2>图生视频</h2>
+          <span class="hint">首帧图片 → 5/10 秒短视频</span>
+        </div>
+        <div id="videoDrop" class="dropzone" tabindex="0" role="button" aria-label="上传视频首帧图片">
+          <input id="videoInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden>
+          <div class="drop-empty">
+            <div class="drop-icon">＋</div>
+            <p><strong>点击上传</strong> 首帧图片</p>
+            <span>建议用试衣/换装结果，竖版全身效果最好</span>
+          </div>
+          <div class="drop-preview" hidden>
+            <img id="videoPreview" alt="视频首帧预览">
+            <button id="videoRemove" class="remove-btn" type="button" title="移除图片">×</button>
+          </div>
+        </div>
+
+        <label class="field">
+          视频提示词（可选）
+          <textarea id="videoPrompt" rows="3" placeholder="例如：模特自然缓慢转身，展示服装全貌，镜头稳定，背景干净"></textarea>
+        </label>
+
+        <div class="row">
+          <label>时长
+            <select id="videoDuration">
+              <option value="5">5 秒</option>
+              <option value="10">10 秒</option>
+            </select>
+          </label>
+          <label>分辨率
+            <select id="videoResolution">
+              <option value="480P">480P</option>
+              <option value="720P">720P</option>
+              <option value="1080P">1080P</option>
+            </select>
+          </label>
+          <label>生成方式
+            <select id="videoMethod">
+              <option value="auto">自动（百炼万相）</option>
+              <option value="wan">万相图生视频</option>
+              <option value="seedance">Seedance（需方舟 Key）</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="checkbox">
+          <input id="videoDryRun" type="checkbox">
+          仅预览 Prompt（不调用 API，免费）
+        </label>
+
+        <button id="videoGenerate" class="primary" type="button" disabled>生成视频</button>
+        <p class="cost-note">
+          模型 <span id="videoModelLabel">wan2.5-i2v-preview</span>；
+          <span id="videoEstimate">预计 ¥1.50</span>（按秒估算，以控制台账单为准）。
+        </p>
+        <p id="videoError" class="error" hidden></p>
+      </div>
+    </section>
+
+    <section class="panel result-panel">
+      <div class="panel-head">
+        <h2 id="resultTitle">生成结果</h2>
+        <div class="result-head-right">
+          <button id="exportLookbook" class="chip" type="button" hidden>导出 Lookbook</button>
+          <span id="statusLine" class="hint">等待上传</span>
+        </div>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-art">◫</div>
+        <p id="emptyTitle">上传人物图并输入换装指令</p>
+        <span id="emptyDesc">结果会保留人物的脸、发型、姿势和背景</span>
+      </div>
+
+      <div id="loading" class="loading" hidden>
+        <div class="spinner"></div>
+        <p id="loadingText">正在生成…</p>
+      </div>
+
+      <details id="promptBox" class="prompt-box" hidden>
+        <summary>
+          <strong>实际 Prompt</strong>
+          <button id="copyPrompt" class="link-btn" type="button">复制</button>
+        </summary>
+        <pre id="promptText"></pre>
+      </details>
+
+      <div id="results" class="results"></div>
+      <p id="taskError" class="error" hidden></p>
+
+      <div id="historyView" class="history-view" hidden>
+        <div class="history-toolbar">
+          <span id="historyCount" class="hint">0 条记录</span>
+          <button id="historyRefresh" class="chip" type="button">刷新</button>
+        </div>
+        <div id="historyGrid" class="history-grid"></div>
+        <div id="historyEmpty" class="history-empty" hidden>
+          <div class="empty-art">◫</div>
+          <p>还没有生成记录</p>
+          <span>在「AI 换装」或「虚拟试衣」生成图片后，会自动出现在这里</span>
+        </div>
+        <p id="historyError" class="error" hidden></p>
+        <p class="history-note">删除图片只清理本地文件；已产生的费用仍保留在成本台账中。</p>
+      </div>
+
+      <div id="styleView" class="style-view" hidden>
+        <div id="styleEmpty" class="empty-state">
+          <div class="empty-art">✦</div>
+          <p>选择场合与偏好，生成 3 套搭配</p>
+          <span>只从内置衣橱选品，不会编造不存在的单品</span>
+        </div>
+        <div id="styleGrid" class="style-grid"></div>
+        <p id="styleError" class="error" hidden></p>
+        <p id="styleMeta" class="hint"></p>
+      </div>
+    </section>
+  </main>
+
+  <div id="modelModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-model></div>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="内置模特库">
+      <div class="modal-head">
+        <div>
+          <h3>内置模特库</h3>
+          <p class="hint">45 个内置模特，点击卡片即可作为人物图</p>
+        </div>
+        <button id="modelClose" class="modal-close" type="button" title="关闭">×</button>
+      </div>
+      <div class="model-filters" id="modelFilters">
+        <button class="chip active" data-filter="all" type="button">全部</button>
+        <button class="chip" data-filter="female" type="button">女装</button>
+        <button class="chip" data-filter="male" type="button">男装</button>
+        <button class="chip" data-filter="child" type="button">童装</button>
+      </div>
+      <div id="modelGrid" class="model-grid"></div>
+      <p id="modelError" class="error" hidden></p>
+    </section>
+  </div>
+
+  <div id="balanceModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-balance></div>
+    <section class="modal-card balance-card" role="dialog" aria-modal="true" aria-label="余额与额度">
+      <div class="modal-head">
+        <div>
+          <h3>余额与额度</h3>
+          <p class="hint">账户余额需阿里云 AccessKey；本地成本来自成本台账</p>
+        </div>
+        <button id="balanceClose" class="modal-close" type="button" title="关闭">×</button>
+      </div>
+      <div id="balanceBody" class="balance-body">正在检测…</div>
+      <p id="balanceError" class="error" hidden></p>
+      <div class="balance-actions">
+        <button id="balanceRefresh" class="chip" type="button">重新检测</button>
+        <a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener" class="chip">打开百炼控制台</a>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">衣镜 Studio · replica 工作台 · 生成内容请遵守平台与版权规范</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
